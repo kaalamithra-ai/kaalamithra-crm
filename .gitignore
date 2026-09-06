@@ -19,6 +19,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Package lock
+package-lock.json
+
 # OS and editor files
 .DS_Store
 Thumbs.db
