@@ -1,0 +1,182 @@
+﻿<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module">
+(async () => {
+  'use strict';
+  const media = document.querySelector('.hero-media');
+  const hero = document.getElementById('home');
+  const canvas = document.getElementById('hero3d');
+  if (!media || !hero || !canvas) return;
+
+  const mobileMQ = matchMedia('(max-width: 760px)');
+  if (mobileMQ.matches) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if ((navigator.hardwareConcurrency || 8) <= 2) return;
+  if ((navigator.deviceMemory || 8) <= 2) return;
+  let hasWebGL = false;
+  try { const t = document.createElement('canvas');
+        hasWebGL = !!(t.getContext('webgl2') || t.getContext('webgl')); } catch (e) {}
+  if (!hasWebGL) return;
+  let THREE;
+  try { THREE = await import('three'); } catch (e) { return; }
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' }); }
+  catch (e) { return; }
+  renderer.setClearColor(0x000000, 0);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+  const BLUE = 0x3b82f6, PURPLE = 0xa855f7, CYAN = 0x06b6d4;
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x02030d, 9, 20);
+  const camera = new THREE.PerspectiveCamera(42, 2.1, 0.1, 60);
+  camera.position.set(0, 0.55, 6.2);
+  const root = new THREE.Group();
+  const tiltG = new THREE.Group();
+  const spin = new THREE.Group();
+  root.add(tiltG); tiltG.add(spin); scene.add(root);
+
+  function radialTex(rgb) {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(64, 64, 2, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(' + rgb + ',0.85)');
+    gr.addColorStop(0.35, 'rgba(' + rgb + ',0.28)');
+    gr.addColorStop(1, 'rgba(' + rgb + ',0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  }
+  const core = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.92, 2),
+    new THREE.MeshStandardMaterial({ color: 0x0b1230, emissive: BLUE, emissiveIntensity: 1.1, metalness: 0.75, roughness: 0.28 })
+  );
+  spin.add(core);
+  const wire = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.14, 1)),
+    new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  spin.add(wire);
+  const rim = new THREE.Mesh(
+    new THREE.SphereGeometry(1.34, 48, 32),
+    new THREE.ShaderMaterial({
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+      uniforms: { tint: { value: new THREE.Color(PURPLE) } },
+      vertexShader: 'varying vec3 vN,vV;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);vN=normalize(normalMatrix*normal);vV=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}',
+      fragmentShader: 'varying vec3 vN,vV;uniform vec3 tint;void main(){float f=pow(1.-max(dot(vN,vV.),0.),3.);gl_FragColor=vec4(tint,f*.7);}'
+    })
+  );
+  spin.add(rim);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTex('59,130,246'), blending: THREE.AdditiveBlending, depthWrite: false }));
+  glow.scale.set(5, 5, 1);
+  spin.add(glow);
+
+  const r1 = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.012, 16, 120), new THREE.MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.5 }));
+  const r2 = new THREE.Mesh(new THREE.TorusGeometry(2.0, 0.012, 16, 120), new THREE.MeshBasicMaterial({ color: BLUE, transparent: true, opacity: 0.4 }));
+  const r3 = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.012, 16, 120), new THREE.MeshBasicMaterial({ color: PURPLE, transparent: true, opacity: 0.3 }));
+  r1.rotation.x = Math.PI / 2.2; r2.rotation.x = Math.PI / 3; r2.rotation.y = 0.4; r3.rotation.x = Math.PI / 4; r3.rotation.z = 0.5;
+  spin.add(r1, r2, r3);
+
+  const badgeTex = [];
+  ['CRM', 'Sales', 'Cloud', 'Data', 'ERP', 'Support'].forEach(function (label, i) {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = 'rgba(13,20,40,0.9)'; g.strokeStyle = 'rgba(59,130,246,0.6)'; g.lineWidth = 3;
+    g.roundRect(8, 8, 240, 112, 24); g.fill(); g.stroke();
+    g.fillStyle = '#e8eaf6'; g.font = 'bold 34px Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(label, 128, 68);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; badgeTex.push(t);
+  });
+  const badges = [];
+  for (let i = 0; i < 6; i++) {
+    const b = new THREE.Sprite(new THREE.SpriteMaterial({ map: badgeTex[i], transparent: true, depthWrite: false }));
+    b.scale.set(0.7, 0.35, 1);
+    const a = (i / 6) * Math.PI * 2;
+    b.userData = { angle: a, radius: 2.6 + (i % 2) * 0.3 };
+    b.position.set(Math.cos(a) * b.userData.radius, Math.sin(a * 2) * 0.5, Math.sin(a) * b.userData.radius);
+    badges.push(b); scene.add(b);
+  }
+
+  const dustGeo = new THREE.BufferGeometry();
+  const dustN = 200, dustPos = new Float32Array(dustN * 3);
+  for (let i = 0; i < dustN; i++) { dustPos[i * 3] = (Math.random() - 0.5) * 8; dustPos[i * 3 + 1] = (Math.random() - 0.5) * 8; dustPos[i * 3 + 2] = (Math.random() - 0.5) * 8; }
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+  const dustA = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: CYAN, size: 0.04, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const dustB = new THREE.Points(dustGeo.clone(), new THREE.PointsMaterial({ color: PURPLE, size: 0.03, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(dustA, dustB);
+
+  const grid = new THREE.GridHelper(12, 24, BLUE, PURPLE);
+  grid.material.transparent = true; grid.material.opacity = 0.3;
+  grid.position.y = -1.75;
+  scene.add(grid);
+  scene.add(new THREE.AmbientLight(0x223060, 1.1));
+  const l1 = new THREE.PointLight(BLUE, 30, 18);   l1.position.set(-3, 2.4, 3.2);
+  const l2 = new THREE.PointLight(PURPLE, 26, 18); l2.position.set(3.2, -1.6, 2.6);
+  const l3 = new THREE.PointLight(CYAN, 14, 14);   l3.position.set(0, 2.6, -2.4);
+  scene.add(l1, l2, l3);
+
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+  window.addEventListener('resize', resize);
+
+  const tilt = { x: 0, y: 0, tx: 0, ty: 0 };
+  hero.addEventListener('pointermove', function (e) {
+    const r = hero.getBoundingClientRect();
+    tilt.tx = ((e.clientX - r.left) / r.width - 0.5) * 2;
+    tilt.ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
+  });
+  hero.addEventListener('pointerleave', function () { tilt.tx = 0; tilt.ty = 0; });
+
+  const clock = new THREE.Clock();
+  let running = false, rafId = 0, inView = true, t = 0, frames = 0;
+  function render() {
+    rafId = requestAnimationFrame(render);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    t += dt; frames++;
+    spin.rotation.y += dt * 0.16;
+    root.position.y = Math.sin(t * 1.05) * 0.1;
+    wire.rotation.y -= dt * 0.10; wire.rotation.x += dt * 0.05;
+    r1.rotation.z += dt * 0.50; r2.rotation.z -= dt * 0.38; r3.rotation.z += dt * 0.22;
+    dustA.rotation.y += dt * 0.02; dustB.rotation.y -= dt * 0.015;
+    grid.position.z = (t * 0.5) % 0.5;
+    for (let i = 0; i < badges.length; i++) {
+      const a = badges[i].userData.angle;
+      badges[i].position.y = Math.sin(a * 2) * 0.55 + Math.sin(t * 1.35 + a * 3) * 0.12;
+    }
+    const k = 1 - Math.exp(-dt * 4.5);
+    tilt.x += (tilt.tx - tilt.x) * k;
+    tilt.y += (tilt.ty - tilt.y) * k;
+    tiltG.rotation.x = -tilt.y * 0.14;
+    tiltG.rotation.y =  tilt.x * 0.22;
+    camera.position.x =  tilt.x * 0.35;
+    camera.position.y =  0.55 - tilt.y * 0.22;
+    camera.lookAt(0, 0, 0);
+    renderer.render(scene, camera);
+  }
+  function start() { if (!running) { running = true; clock.getDelta(); render(); } }
+  function stop()  { running = false; cancelAnimationFrame(rafId); }
+  document.addEventListener('visibilitychange', function () { document.hidden ? stop() : (inView && start()); });
+  if (window.IntersectionObserver) {
+    new IntersectionObserver(function (en) { inView = en[0].isIntersecting; inView ? start() : stop(); }).observe(canvas);
+  }
+  if (mobileMQ.addEventListener) mobileMQ.addEventListener('change', function (e) { e.matches ? stop() : start(); });
+  else if (mobileMQ.addListener) mobileMQ.addListener(function (e) { e.matches ? stop() : start(); });
+
+  media.classList.add('hero-3d-on');
+  resize();
+  start();
+
+  const hook = window.__hero3d = {
+    ok: true, rev: THREE.REVISION, fps: 0,
+    get tiltX() { return +tiltG.rotation.x.toFixed(3); },
+    get tiltY() { return +tiltG.rotation.y.toFixed(3); }
+  };
+  setInterval(function () { hook.fps = frames; frames = 0; }, 1000);
+})();
+</script>
